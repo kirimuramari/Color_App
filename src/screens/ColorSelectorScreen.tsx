@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { View, StyleSheet } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { View, StyleSheet, Animated } from "react-native";
 import {
   Text,
   Button,
@@ -18,11 +18,27 @@ type Item = {
 export default function ColorSelectorScreen() {
   const [colors, setColors] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-
+  const [isDecided, setDecided] = useState(false);
   const [twoColors, setTwoColors] = useState(false);
   const [onlyPurchased, setOnlyPurchased] = useState(false);
 
   const [selectedColors, setSelectedColors] = useState<Item[]>([]);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const animateResult = (callback: () => void) => {
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      callback();
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
 
   useEffect(() => {
     fetchColors();
@@ -51,7 +67,7 @@ export default function ColorSelectorScreen() {
   return (
     <View style={styles.container}>
       <Card style={styles.card}>
-        <Text style={styles.title}>カラーセレクター 🎀</Text>
+        <Text style={styles.title}>カラリーセレクター 🎀</Text>
         <View style={styles.toggleRow}>
           <Text>すべて</Text>
           <Switch value={onlyPurchased} onValueChange={setOnlyPurchased} />
@@ -76,10 +92,19 @@ export default function ColorSelectorScreen() {
         {loading && (
           <ActivityIndicator style={{ marginTop: 20 }} animating={true} />
         )}
-        <Button mode="contained" onPress={handleSelect} style={styles.okButton}>
-          OK
+        <Button
+          mode="contained"
+          onPress={() => {
+            animateResult(() => {
+              setDecided(true);
+              handleSelect();
+            });
+          }}
+          style={styles.okButton}
+        >
+          {isDecided ? "変更する" : "OK"}
         </Button>
-        <View style={{ marginTop: 20 }}>
+        <Animated.View style={{ opacity: fadeAnim, marginTop: 20 }}>
           {selectedColors.map((item, index) => (
             <Card key={index} style={styles.resultCard}>
               <Text style={styles.resultText}>
@@ -87,7 +112,7 @@ export default function ColorSelectorScreen() {
               </Text>
             </Card>
           ))}
-        </View>
+        </Animated.View>
       </Card>
     </View>
   );
