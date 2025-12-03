@@ -10,19 +10,23 @@ import {
 import { supabase } from "../lib/supabaseClient";
 
 type Item = {
-  コード: number;
+  コード: number | null;
   商品名: string;
   セット名: string;
-  購入済み: boolean;
+  シリーズ名: string;
+  購入済み?: boolean;
+  __source?: "GreenOcean" | "Padico";
 };
 export default function ColorSelectorScreen() {
   const [colors, setColors] = useState<Item[]>([]);
+  const [padicoColors, setPadicoColors] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDecided, setDecided] = useState(false);
-  const [twoColors, setTwoColors] = useState(false);
   const [onlyPurchased, setOnlyPurchased] = useState(false);
+  const [includePadico, setIncludePadico] = useState(false);
 
   const [selectedColors, setSelectedColors] = useState<Item[]>([]);
+
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const animateResult = (callback: () => void) => {
@@ -46,49 +50,71 @@ export default function ColorSelectorScreen() {
 
   const fetchColors = async () => {
     setLoading(true);
-    let query = supabase.from("GreenOcean_Color").select("*");
-    if (onlyPurchased) {
-      query = query.eq("購入済み", true);
-    }
-    const { data, error } = await query;
+    try {
+      // --- GreenOcean ---
 
-    if (!error && data) {
-      setColors(data as Item[]);
+      let query = supabase.from("GreenOcean_Color").select("*");
+      // カラリー Switch が「購入済み」の時だけ絞り込み
+
+      if (onlyPurchased) {
+        query = query.eq("購入済み", true);
+      }
+      const { data: green, error: gErr } = await query;
+      //Padico
+      const { data: padico, error: pErr } = await supabase
+        .from("Padico_Color")
+        .select("*");
+
+      if (!gErr && green) {
+        const withTag = green.map((v) => ({ ...v, __source: "GreenOcean" }));
+        setColors(withTag);
+      }
+      if (!pErr && padico) {
+        const withTag = padico.map((v) => ({
+          ...v,
+          コード: null,
+          __source: "Padico",
+        }));
+        setPadicoColors(withTag);
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching colors:", error);
+      setLoading(false);
     }
-    setLoading(false);
   };
+  // GreenOcean ランダム 2色
   const handleSelect = () => {
-    if (colors.length === 0) return;
+    if (colors.length < 2) return;
+    const shuffle = (arr: any[]) => [...arr].sort(() => Math.random() - 0.5);
 
-    const shuffled = [...colors].sort(() => Math.random() - 0.5);
-    const pickCount = twoColors ? 2 : 1;
-    setSelectedColors(shuffled.slice(0, pickCount));
+    const selectedGreen = shuffle(colors).slice(0, 2);
+    let final = [...selectedGreen];
+    //Padico
+    if (includePadico && padicoColors.length >= 2) {
+      const selectedPadico = shuffle(padicoColors).slice(0, 2);
+
+      final = [...final, ...selectedPadico];
+    }
+    setSelectedColors(final);
   };
   return (
     <View style={styles.container}>
       <Card style={styles.card}>
-        <Text style={styles.title}>カラリーセレクター 🎀</Text>
+        <Text style={styles.title}>カラーセレクター 🎀</Text>
+        <Text style={styles.subTitle}>カラリー</Text>
         <View style={styles.toggleRow}>
           <Text>すべて</Text>
           <Switch value={onlyPurchased} onValueChange={setOnlyPurchased} />
           <Text>購入済み</Text>
         </View>
-        <View style={styles.toggleButtonRow}>
-          <Button
-            mode={twoColors ? "outlined" : "contained"}
-            onPress={() => setTwoColors(false)}
-            style={styles.toggleButton}
-          >
-            1色
-          </Button>
-          <Button
-            mode={twoColors ? "contained" : "outlined"}
-            onPress={() => setTwoColors(true)}
-            style={styles.toggleButton}
-          >
-            2色
-          </Button>
+        <Text style={styles.subTitle}>パジコカラー</Text>
+        <View style={styles.toggleRow}>
+          <Text>含まない</Text>
+          <Switch value={includePadico} onValueChange={setIncludePadico} />
+          <Text>含む</Text>
         </View>
+
         {loading && (
           <ActivityIndicator style={{ marginTop: 20 }} animating={true} />
         )}
@@ -108,7 +134,9 @@ export default function ColorSelectorScreen() {
           {selectedColors.map((item, index) => (
             <Card key={index} style={styles.resultCard}>
               <Text style={styles.resultText}>
-                {item.コード}番{item.セット名}の{item.商品名}
+                {item.__source === "GreenOcean"
+                  ? `${item.コード}番${item.セット名}の${item.商品名}`
+                  : `${item.シリーズ名}の${item.商品名}`}
               </Text>
             </Card>
           ))}
@@ -133,6 +161,12 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 20,
   },
+  subTitle: {
+    textAlign: "center",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 10,
+  },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -140,16 +174,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 5,
   },
-  toggleButtonRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 10,
-    marginBottom: 10,
-  },
-  toggleButton: {
-    borderRadius: 20,
-    paddingHorizontal: 10,
-  },
+
   okButton: {
     marginTop: 20,
     borderRadius: 20,
